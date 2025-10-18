@@ -75,14 +75,14 @@ def extract_base_m3u8_url(page, event_url):
         print(f"-> ❌ Event sayfası işlenirken hata oluştu: {e}")
         return None
 
-# --- Tüm Kanal Listesini Kazıma Fonksiyonu (DEĞİŞİKLİK YOK - Seçiciler aynı görünüyor) ---
+# --- TEKRAR GÜNCELLENEN FONKSİYON: Tüm Kanal Listesini Kazıma (İSME GÖRE YİNELENENLERİ KALDIR) ---
 def scrape_all_channels(page):
     """
-    Justin TV ana sayfasında JS'in yüklenmesini bekler ve tüm kanalların
-    isimlerini ve ID'lerini (yinelenenler dahil) kazır.
+    Justin TV ana sayfasında JS'in yüklenmesini bekler, TÜM kanalları kazır
+    ve AYNI İSME sahip kanalları teke indirir (son bulunan kalır).
     """
     print(f"\n📡 Tüm kanallar {JUSTINTV_DOMAIN} adresinden çekiliyor...")
-    channels = []
+    channels_dict = {} # Sonuçları önce sözlükte toplayalım (isim: {bilgiler})
     try:
         print(f"-> Ana sayfaya gidiliyor ve ağ trafiğinin durması bekleniyor (Max 45sn)...")
         page.goto(JUSTINTV_DOMAIN, timeout=45000, wait_until='networkidle')
@@ -106,6 +106,7 @@ def scrape_all_channels(page):
         channel_elements = page.query_selector_all(mac_item_selector)
         print(f"-> {len(channel_elements)} adet potansiyel kanal elemanı bulundu.")
 
+        # --- DEĞİŞİKLİK: processed_ids yerine channels_dict kullan ---
         for element in channel_elements:
             name_element = element.query_selector(".takimlar")
             channel_name = name_element.inner_text().strip() if name_element else "İsimsiz Kanal"
@@ -115,14 +116,13 @@ def scrape_all_channels(page):
             stream_id = None
             if data_url:
                 try:
-                    # ID'yi data-url'den parse et
                     parsed_data_url = urlparse(data_url)
                     query_params = parse_qs(parsed_data_url.query)
                     stream_id = query_params.get('id', [None])[0]
                 except Exception:
                     pass
 
-            if stream_id: # Sadece ID varsa ekle
+            if stream_id: # Sadece ID varsa işle
                 time_element = element.query_selector(".saat")
                 time_str = time_element.inner_text().strip() if time_element else None
                 if time_str and time_str != "CANLI":
@@ -130,15 +130,21 @@ def scrape_all_channels(page):
                 else:
                      final_channel_name = channel_name_clean
 
-                channels.append({
+                # Sözlüğe ekle/güncelle (anahtar: final_channel_name)
+                # Aynı isim tekrar gelirse, önceki bilgiyi yenisiyle değiştirir.
+                channels_dict[final_channel_name] = {
                     'name': final_channel_name,
                     'id': stream_id
-                })
+                }
+        # --- DEĞİŞİKLİK BİTTİ ---
+
+        # Sözlüğü tekrar listeye çevir
+        channels = list(channels_dict.values())
 
         # Kanalları isme göre sırala (isteğe bağlı)
         channels.sort(key=lambda x: x['name'])
 
-        print(f"✅ {len(channels)} adet kanal bilgisi başarıyla çıkarıldı (yinelenenler dahil).")
+        print(f"✅ {len(channels)} adet benzersiz isimli kanal bilgisi başarıyla çıkarıldı.")
         return channels
 
     except Exception as e:
