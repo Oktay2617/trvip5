@@ -75,38 +75,56 @@ def extract_base_m3u8_url(page, event_url):
         print(f"-> ❌ Event sayfası işlenirken hata oluştu: {e}")
         return None
 
-# --- TEKRAR GÜNCELLENEN FONKSİYON: Tüm Kanal Listesini Kazıma (İSME GÖRE YİNELENENLERİ KALDIR) ---
+# --- TEKRAR GÜNCELLENEN FONKSİYON: Gereksiz goto kaldırıldı ---
 def scrape_all_channels(page):
     """
-    Justin TV ana sayfasında JS'in yüklenmesini bekler, TÜM kanalları kazır
-    ve AYNI İSME sahip kanalları teke indirir (son bulunan kalır).
+    Justin TV ana sayfasında (zaten açık olduğu varsayılarak) JS'in
+    listeyi doldurmasını bekler ve kanalları kazır.
     """
     print(f"\n📡 Tüm kanallar {JUSTINTV_DOMAIN} adresinden çekiliyor...")
-    channels_dict = {} # Sonuçları önce sözlükte toplayalım (isim: {bilgiler})
+    channels_dict = {}
     try:
-        print(f"-> Ana sayfaya gidiliyor ve ağ trafiğinin durması bekleniyor (Max 45sn)...")
-        page.goto(JUSTINTV_DOMAIN, timeout=45000, wait_until='networkidle')
-        print("-> Ağ trafiği durdu veya zaman aşımına yaklaşıldı.")
+        # --- KALDIRILDI: Sayfaya tekrar gitmeye gerek yok ---
+        # print(f"-> Ana sayfaya gidiliyor ve ağ trafiğinin durması bekleniyor (Max 45sn)...")
+        # page.goto(JUSTINTV_DOMAIN, timeout=45000, wait_until='networkidle')
+        # print("-> Ağ trafiği durdu veya zaman aşımına yaklaşıldı.")
+        # --- KALDIRILDI ---
 
+        # Sayfa zaten açık, doğrudan DOM güncellemelerini bekle
         print("-> DOM güncellemeleri için 5 saniye bekleniyor...")
         page.wait_for_timeout(5000)
 
         mac_item_selector = ".mac[data-url]"
         print(f"-> Sayfa içinde '{mac_item_selector}' elementleri var mı kontrol ediliyor...")
 
+        # JS ile elementlerin varlığını kontrol et
         elements_exist = page.evaluate(f'''() => {{
-            return document.querySelector('{mac_item_selector}') !== null;
+            // Biraz daha sağlam kontrol: Sadece #hepsi içindekilere bakalım
+            const container = document.querySelector('.macListe#hepsi');
+            if (!container) return false;
+            return container.querySelector('{mac_item_selector}') !== null;
         }}''')
 
         if not elements_exist:
-            print(f"❌ Sayfa içinde '{mac_item_selector}' elemanları bulunamadı.")
+            print(f"❌ Sayfa içinde '{mac_item_selector}' elemanları bulunamadı (JS değerlendirmesi başarısız).")
+            # Belki ilk yüklemede ağ trafiği durmamıştır, sayfayı yenileyip tekrar deneyelim? (İleri seviye)
+            # Şimdilik hata verip duralım.
             return []
 
-        print("-> ✅ Kanallar sayfada mevcut. Bilgiler çıkarılıyor...")
-        channel_elements = page.query_selector_all(mac_item_selector)
-        print(f"-> {len(channel_elements)} adet potansiyel kanal elemanı bulundu.")
+        print("-> ✅ JS değerlendirmesi başarılı, kanallar sayfada mevcut.")
+        # Tekrar bekleme (opsiyonel ama tüm listenin dolduğundan emin olmak için)
+        page.wait_for_timeout(2000)
 
-        # --- DEĞİŞİKLİK: processed_ids yerine channels_dict kullan ---
+        # Sadece #hepsi listesindeki kanalları al (daha güvenli)
+        channel_elements = page.query_selector_all(".macListe#hepsi .mac[data-url]")
+        # Eğer #hepsi boşsa, belki diğer tab'lardadır? Şimdilik sadece #hepsi'ne odaklanalım.
+        if not channel_elements:
+             print("-> Uyarı: '.macListe#hepsi' içinde kanal elemanı bulunamadı, diğer tab'lar kontrol edilmiyor.")
+             return []
+
+
+        print(f"-> {len(channel_elements)} adet potansiyel kanal elemanı bulundu. Bilgiler çıkarılıyor...")
+
         for element in channel_elements:
             name_element = element.query_selector(".takimlar")
             channel_name = name_element.inner_text().strip() if name_element else "İsimsiz Kanal"
@@ -122,7 +140,7 @@ def scrape_all_channels(page):
                 except Exception:
                     pass
 
-            if stream_id: # Sadece ID varsa işle
+            if stream_id:
                 time_element = element.query_selector(".saat")
                 time_str = time_element.inner_text().strip() if time_element else None
                 if time_str and time_str != "CANLI":
@@ -130,18 +148,13 @@ def scrape_all_channels(page):
                 else:
                      final_channel_name = channel_name_clean
 
-                # Sözlüğe ekle/güncelle (anahtar: final_channel_name)
-                # Aynı isim tekrar gelirse, önceki bilgiyi yenisiyle değiştirir.
+                # İsme göre filtrele (son bulunan kalır)
                 channels_dict[final_channel_name] = {
                     'name': final_channel_name,
                     'id': stream_id
                 }
-        # --- DEĞİŞİKLİK BİTTİ ---
 
-        # Sözlüğü tekrar listeye çevir
         channels = list(channels_dict.values())
-
-        # Kanalları isme göre sırala (isteğe bağlı)
         channels.sort(key=lambda x: x['name'])
 
         print(f"✅ {len(channels)} adet benzersiz isimli kanal bilgisi başarıyla çıkarıldı.")
@@ -149,6 +162,13 @@ def scrape_all_channels(page):
 
     except Exception as e:
         print(f"❌ Kanal listesi işlenirken hata oluştu: {e}")
+        # Hata ayıklama için sayfa durumunu görebiliriz
+        # try:
+        #     with open("page_content_scrape_error.html", "w", encoding="utf-8") as f:
+        #         f.write(page.content())
+        #     print("   Hata anındaki sayfa içeriği 'page_content_scrape_error.html' dosyasına kaydedildi.")
+        # except:
+        #     pass # Sayfa içeriğini alamazsak da devam et
         return []
 
 # --- Gruplama Fonksiyonu (DEĞİŞİKLİK YOK - Aynı mantık kullanılabilir) ---
