@@ -32,10 +32,6 @@ jobs:
       - name: Run tvjustin.py to get raw M3U8
         run: python tvjustin.py # Dosya adını buna göre ayarlayın
 
-      # --- YENİ ADIM: İkinci script'i çalıştır ---
-      - name: Run clean_m3u8.py to filter duplicates
-        run: python clean_m3u8.py
-
       # --- DEĞİŞİKLİK YOK: Commit adımı her iki script'ten sonra ---
       - name: Commit and Push changes
         run: |
