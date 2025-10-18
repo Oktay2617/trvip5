@@ -404,7 +404,7 @@ def main():
 
         # --- DEĞİŞİKLİK: Çıktı dosyası adı ---
 
-        output_filename = "justintv_kanallar_raw.m3u8.m3u8"
+        output_filename = "justintv_kanallar.m3u8"
 
         print(f"\n📺 {len(channels)} kanal için M3U8 linkleri oluşturuluyor...")
 
