@@ -75,19 +75,17 @@ def extract_base_m3u8_url(page, event_url):
         print(f"-> ❌ Event sayfası işlenirken hata oluştu: {e}")
         return None
 
-# --- TEKRAR GÜNCELLENEN FONKSİYON: Tüm Kanal Listesini Kazıma (İSME GÖRE YİNELENENLERİ KALDIR - İLK BULUNAN KALIR) ---
+# --- TEKRAR GÜNCELLENEN FONKSİYON: Tüm Kanal Listesini Kazıma (İSME GÖRE YİNELENENLERİ KALDIR - İLK BULUNAN KALIR - GOTO YOK) ---
 def scrape_all_channels(page):
     """
-    Justin TV ana sayfasında JS'in yüklenmesini bekler, TÜM kanalları kazır
-    ve AYNI İSME sahip kanalları teke indirir (ilk bulunan kalır).
+    Justin TV ana sayfasında (zaten açık olduğu varsayılarak) JS'in
+    listeyi doldurmasını bekler, TÜM kanalları kazır ve AYNI İSME
+    sahip kanalları teke indirir (ilk bulunan kalır).
     """
     print(f"\n📡 Tüm kanallar {JUSTINTV_DOMAIN} adresinden çekiliyor...")
     channels_dict = {} # Sonuçları önce sözlükte toplayalım (isim: {bilgiler})
     try:
-        # --- ÖNCEKİ DÜZELTME: Gereksiz goto kaldırılmıştı, KALIYOR ---
-        # print(f"-> Ana sayfaya gidiliyor ve ağ trafiğinin durması bekleniyor (Max 45sn)...")
-        # page.goto(JUSTINTV_DOMAIN, timeout=45000, wait_until='networkidle')
-        # print("-> Ağ trafiği durdu veya zaman aşımına yaklaşıldı.")
+        # --- GOTO SATIRI YOK ---
 
         print("-> DOM güncellemeleri için 5 saniye bekleniyor...")
         page.wait_for_timeout(5000)
@@ -95,6 +93,7 @@ def scrape_all_channels(page):
         mac_item_selector = ".mac[data-url]"
         print(f"-> Sayfa içinde '{mac_item_selector}' elementleri var mı kontrol ediliyor...")
 
+        # JS ile elementlerin varlığını kontrol et
         elements_exist = page.evaluate(f'''() => {{
             const container = document.querySelector('.macListe#hepsi');
             if (!container) return false;
@@ -102,10 +101,13 @@ def scrape_all_channels(page):
         }}''')
 
         if not elements_exist:
-            print(f"❌ Sayfa içinde '{mac_item_selector}' elemanları bulunamadı.")
+            print(f"❌ Sayfa içinde '{mac_item_selector}' elemanları bulunamadı (JS değerlendirmesi başarısız).")
             return []
 
-        print("-> ✅ Kanallar sayfada mevcut. Bilgiler çıkarılıyor...")
+        print("-> ✅ JS değerlendirmesi başarılı, kanallar sayfada mevcut.")
+        # Ek bekleme
+        page.wait_for_timeout(2000)
+
         channel_elements = page.query_selector_all(".macListe#hepsi .mac[data-url]")
         print(f"-> {len(channel_elements)} adet potansiyel kanal elemanı bulundu.")
 
@@ -134,6 +136,7 @@ def scrape_all_channels(page):
                      final_channel_name = channel_name_clean
 
                 # Eğer bu isim DAHA ÖNCE eklenmediyse, sözlüğe ekle.
+                # Bu satır aynı isimli kanallardan sadece ilkini tutar.
                 if final_channel_name not in channels_dict:
                     channels_dict[final_channel_name] = {
                         'name': final_channel_name,
